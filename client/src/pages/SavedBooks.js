@@ -1,58 +1,61 @@
 import React, { useState, useEffect } from 'react';
 import { Jumbotron, Container, CardColumns, Card, Button } from 'react-bootstrap';
 
-import { getMe, deleteBook } from '../utils/API';
+import { useQuery } from '@apollo/client';
+import { useMutation } from '@apollo/client';
+import { QUERY_USER } from '../utils/queries';
+import { REMOVE_BOOK } from '../utils/mutations';
+
 import Auth from '../utils/auth';
 import { removeBookId } from '../utils/localStorage';
 
 const SavedBooks = () => {
   const [userData, setUserData] = useState({});
+  const [ loading, setLoading ] = useState(false);
 
   // use this to determine if `useEffect()` hook needs to run again
   const userDataLength = Object.keys(userData).length;
 
+  // get the user id from the token to use in the query
+  const userId = Auth.getProfile().data._id; 
+
+  const { data } = useQuery(QUERY_USER, {
+    variables: { userId: userId },
+  }); 
+
+
   useEffect(() => {
-    const getUserData = async () => {
-      try {
-        const token = Auth.loggedIn() ? Auth.getToken() : null;
+    if (data) {
+      setUserData(data.user);
+      setLoading(false);
+    }
+    // if data changes, run useEffect() again
+  }, [data]); 
 
-        if (!token) {
-          return false;
-        }
-
-        const response = await getMe(token);
-
-        if (!response.ok) {
-          throw new Error('something went wrong!');
-        }
-
-        const user = await response.json();
-        setUserData(user);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    getUserData();
-  }, [userDataLength]);
+  const [removeBook, { error }] = useMutation(REMOVE_BOOK);
 
   // create function that accepts the book's mongo _id value as param and deletes the book from the database
   const handleDeleteBook = async (bookId) => {
-    const token = Auth.loggedIn() ? Auth.getToken() : null;
+    // get token
+    const token = Auth.loggedIn() ? Auth.getToken() : null; 
 
-    if (!token) {
+    // if no token, return false to stop the execution of code
+    if (!token) { 
       return false;
     }
 
     try {
-      const response = await deleteBook(bookId, token);
-
-      if (!response.ok) {
+      const { data } = await removeBook({
+        // pass in the bookId and userId variables
+        variables: { userId: userId, bookId: bookId }, 
+      });
+      
+      if (!data) {
         throw new Error('something went wrong!');
       }
 
-      const updatedUser = await response.json();
-      setUserData(updatedUser);
+      window.location.reload(); // reload the page
+
       // upon success, remove book's id from localStorage
       removeBookId(bookId);
     } catch (err) {
